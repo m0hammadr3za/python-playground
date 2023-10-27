@@ -1,5 +1,4 @@
 import yt_dlp
-from pprint import pprint
 
 def get_video_details(video_url):
     ydl_opts = {
@@ -20,7 +19,6 @@ def get_video_details(video_url):
         video_formats = find_video_formats(all_formats_reversed)
         audio_formats = find_audio_formats(all_formats_reversed)
 
-        # thumbnail = info_dict["thumbnails"][-1]['url']
         return video_formats, audio_formats
     
 def find_video_formats(formats):
@@ -31,10 +29,6 @@ def find_video_formats(formats):
         protocol = frmt.get('protocol', 'none')
         if vcodec == 'none' or acodec != 'none' or protocol != 'https':
             continue
-
-        # ext = frmt.get('ext')
-        # if ext != 'mp4':
-        #     continue
 
         height = frmt.get('height')
         fps = frmt.get('fps')
@@ -118,62 +112,6 @@ def readable_size(size):
     else:
         return f"{size/GB:.2f} GB"
 
-def find_matching_audio(video_formats, audio_formats, selected_video_format):
-    video_qualities = [int(v.split('p')[0]) for v in video_formats]
-    audio_qualities = [float(a.split('kbp')[0]) for a in audio_formats]
-    selected_video_quality = int(selected_video_format.split('p')[0])
-
-    print()
-    print(video_qualities)
-    print(audio_qualities)
-    print(selected_video_quality)
-    print()
-
-    if selected_video_quality == video_qualities[0]:
-        return f"{audio_qualities[0]}kbp"
-    if selected_video_quality == video_qualities[-1]:
-        return f"{audio_qualities[-1]}kbp"
-
-    highest_video_quality = max(video_qualities)
-    if highest_video_quality >= 1080:
-        matching_audio_qualtiy = match_1080p_or_higher(audio_qualities, selected_video_quality)
-    elif highest_video_quality > 480:
-        matching_audio_qualtiy = match_up_to_1080p(audio_qualities, selected_video_quality)
-    else:
-        matching_audio_qualtiy = match_up_to_720p(audio_qualities, selected_video_quality)
-
-    return f"{matching_audio_qualtiy}kbp"
-    
-def match_1080p_or_higher(audio_qualities, selected_video_quality):
-    if selected_video_quality >= 1080:
-        return audio_qualities[0]
-    if selected_video_quality > 480:
-        if audio_qualities[1]:
-            return audio_qualities[1]
-        else: 
-            return audio_qualities[0]
-    if audio_qualities[-2]:
-        return audio_qualities[-2]
-    else:
-        return audio_qualities[-1]
-
-def match_up_to_1080p(audio_qualities, selected_video_quality):
-    if selected_video_quality >= 480:
-        if audio_qualities[1]:
-            return audio_qualities[1]
-        else:
-            return audio_qualities[0]
-    if audio_qualities[-2]:
-        return audio_qualities[-2]
-    else:
-        return audio_qualities[-1]
-
-def match_up_to_720p(audio_qualities, selected_video_quality):
-    if audio_qualities[1]:
-        return audio_qualities[1]
-    else:
-        return audio_qualities[0]
-
 def download_video(url, video_format_id, audio_format_id):
     if audio_format_id:
         options = {
@@ -195,11 +133,37 @@ def download_video(url, video_format_id, audio_format_id):
         ydl.download([url])
 
 
-if __name__ == "__main__":
-    video_url = 'https://www.youtube.com/watch?v=di-VTrW7Kr0'
-    # input("Enter the video URL: ")
+def download_audio(url, format_id):
+    ydl_opts = {
+        'format': f'{format_id}',
+        # 'postprocessors': [{    # add this to get mp3 files instead of original format
+        #     'key': 'FFmpegExtractAudio',
+        #     'preferredcodec': 'mp3',
+        # }],
+        'outtmpl': '%(title)s.%(ext)s',
+    }
 
-    video_formats, audio_formats = get_video_details(video_url)
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+        
+def download_thumbnail(video_url):
+    ydl_opts = {
+        'skip_download': True,
+        'outtmpl': 'thumbnail.%(ext)s',
+        'postprocessors': [{
+            'key': 'FFmpegMetadata',
+        }],
+        'writethumbnail': True,
+        'quiet': True
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([video_url])
+
+if __name__ == "__main__":
+    url = input("Enter the video URL: ")
+
+    video_formats, audio_formats = get_video_details(url)
 
     print()
     show_formats(video_formats)
@@ -209,5 +173,32 @@ if __name__ == "__main__":
     show_formats(audio_formats, len(video_formats_keys))
     audio_formats_keys = list(audio_formats.keys())
 
-    matching_audio_format = find_matching_audio(video_formats_keys, audio_formats_keys, video_formats_keys[0])
-    # download_video(video_url, video_format_id, audio_format_id)
+    print()
+    print(f"[ {len(video_formats_keys) + len(audio_formats_keys)} ] Video Thumbnail", end="\n\n")
+
+    user_choice = int(input("Enter the number you want to download: "))
+
+    if user_choice < len(video_formats_keys):
+        audio_choice = int(input("Enter the number for the aduio to mix with this video: "))
+        print()
+
+        selected_video_format = video_formats[video_formats_keys[user_choice]]
+        selected_audio_format = audio_formats[audio_formats_keys[audio_choice - len(video_formats_keys)]]
+
+        print(f"Downloading: {video_formats_keys[user_choice]} with {audio_formats_keys[user_choice - len(video_formats_keys)]} audio...")
+        download_video(url, selected_video_format['format_id'], selected_audio_format['format_id'])
+
+    elif user_choice < len(video_formats_keys) + len(audio_formats_keys):
+        selected_audio_format = audio_formats[audio_formats_keys[user_choice - len(video_formats_keys)]]
+        print(f"\nDownloading: {audio_formats_keys[user_choice - len(video_formats_keys)]}...")
+        download_audio(url, selected_audio_format['format_id'])
+
+    elif user_choice == len(video_formats_keys) + len(audio_formats_keys) + 1:
+        print("\nDownloading thumbnail...")
+        download_thumbnail(url)
+
+    else:
+        print("The number you have selected is not in this list!")
+
+    print()
+    print("Download successful")
